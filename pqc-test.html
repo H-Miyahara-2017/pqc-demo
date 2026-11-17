@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PQC vs 従来TLS暗号 比較シミュレーター</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --border: #cbd5e1;
+      --client: #2563eb;
+      --client-bg: #eff6ff;
+      --net: #d97706;
+      --net-bg: #fffbeb;
+      --server: #059669;
+      --server-bg: #ecfdf5;
+      --dark: #0f172a;
+      --pqc: #7c3aed;
+      --pqc-light: #f3e8ff;
+      --classic: #475569;
+      --classic-light: #f1f5f9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--dark);
+      max-width: 1260px;
+      margin: 1.5rem auto;
+      padding: 0 1rem;
+      line-height: 1.5;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+    .subtitle { color: #475569; font-size: 0.9rem; margin-top: 0; margin-bottom: 1.25rem; }
+
+    .section-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .section-title { font-size: 1.15rem; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+    .badge {
+      background: #ede9fe;
+      color: #5b21b6;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-weight: 700;
+    }
+
+    /* モード切替スイッチ */
+    .mode-switch {
+      display: inline-flex;
+      background: #e2e8f0;
+      padding: 0.25rem;
+      border-radius: 8px;
+      gap: 0.25rem;
+    }
+    .mode-btn {
+      border: none;
+      background: transparent;
+      color: #334155;
+      padding: 0.45rem 0.95rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .mode-btn.active-pqc { background: var(--pqc); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    .mode-btn.active-classic { background: var(--classic); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+
+    /* 違い解説テーブル */
+    .diff-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.85rem;
+      font-size: 0.8rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .diff-table th, .diff-table td {
+      padding: 0.55rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      text-align: left;
+    }
+    .diff-table th { background: #f8fafc; width: 18%; color: #334155; }
+    .col-pqc { width: 41%; transition: background 0.2s; }
+    .col-classic { width: 41%; transition: background 0.2s; }
+    .highlight-pqc { background: var(--pqc-light); font-weight: 600; border-left: 3px solid var(--pqc) !important; }
+    .highlight-classic { background: #e2e8f0; font-weight: 600; border-left: 3px solid var(--classic) !important; }
+
+    /* 比較メーターボックス */
+    .compare-panel {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      margin-top: 0.75rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    .bar-group { font-size: 0.8rem; }
+    .bar-label { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 0.25rem; }
+    .bar-track { background: #e2e8f0; height: 10px; border-radius: 999px; overflow: hidden; margin-bottom: 0.4rem; }
+    .bar-fill-classic { background: var(--classic); height: 100%; }
+    .bar-fill-pqc { background: var(--pqc); height: 100%; }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    @media (max-width: 920px) {
+      .grid-3 { grid-template-columns: 1fr; }
+    }
+    .role-box {
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .role-client { border-color: #93c5fd; background: var(--client-bg); }
+    .role-net { border-color: #fcd34d; background: var(--net-bg); }
+    .role-server { border-color: #6ee7b7; background: var(--server-bg); }
+
+    .role-header {
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .role-client .role-header { color: var(--client); }
+    .role-net .role-header { color: var(--net); }
+    .role-server .role-header { color: var(--server); }
+
+    label { font-size: 0.8rem; font-weight: 600; color: #334155; }
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.82rem;
+      background: #fff;
+    }
+    button.action-btn {
+      padding: 0.55rem 0.9rem;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.84rem;
+      color: #fff;
+      cursor: pointer;
+    }
+    button.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-client { background: var(--client); }
+    .btn-server { background: var(--server); }
+
+    pre {
+      background: var(--dark);
+      color: #f8fafc;
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      margin: 0;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      min-height: 140px;
+      flex-grow: 1;
+    }
+    .notice {
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.82rem;
+      color: #7c2d12;
+      margin-bottom: 1.25rem;
+    }
+    .refs { font-size: 0.78rem; color: #475569; }
+    .refs h2 { font-size: 0.95rem; color: var(--dark); margin-top: 0; }
+    .refs ul { margin: 0.25rem 0 0; padding-left: 1.2rem; }
+    .key-tag {
+      font-size: 0.7rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.85);
+      border: 1px solid rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>PQC（耐量子計算機暗号）vs 従来のTLS暗号（楕円曲線暗号）比較シミュレーター</h1>
+  <p class="subtitle">右上のスイッチを切り替えると、その方式で鍵・暗号文・署名を生成し直し、「仕組み・データサイズ・量子コンピュータへの耐性」の違いを比較できます。</p>
+  <div class="notice">
+    ※ 本ページは、ML-KEM / ML-DSA（PQC）と ECDH / ECDSA（従来方式）の鍵・署名のサイズや処理の流れを比べるための<b>学習用デモ</b>です。実際のTLSハンドシェイクを再現したものではなく、サーバー役の鍵ペアも含めてすべてブラウザ内で生成しています。本番環境での利用は想定していません。
+  </div>
+
+  <!-- ==================== セクション1: 鍵共有 + AES暗号化 ==================== -->
+  <div class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">
+        <span class="badge" id="kemBadge">PQC: ML-KEM-768</span>
+        1. 鍵交換（鍵共有）＋ AES-256-GCM 暗号化通信
+      </h2>
+      <div class="mode-switch">
+        <button id="modeKemPqc" class="mode-btn active-pqc">🟣 PQC（ML-KEM-768）</button>
+        <button id="modeKemClassic" class="mode-btn">⚪ 従来TLS（ECDH P-256）</button>
+      </div>
+    </div>
+
+    <!-- 仕組みの違い比較表 -->
+    <table class="diff-table">
+      <thead>
+        <tr>
+          <th>比較ポイント</th>
+          <th id="thKemPqc" class="col-pqc highlight-pqc">🟣 PQC：ML-KEM-768（NIST標準 FIPS 203）</th>
+          <th id="thKemClassic" class="col-classic">⚪ 従来TLS：ECDH P-256（現在の主流）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>鍵を共有する仕組みの違い</th>
+          <td id="tdKemPqc1" class="col-pqc highlight-pqc"><b>カプセル化（KEM方式）：</b>ブラウザが共通鍵のタネを作り、サーバーの公開鍵でロックした「カプセル（1,088 B）」を送る</td>
+          <td id="tdKemClassic1" class="col-classic"><b>Diffie-Hellman鍵交換：</b>サーバーとブラウザがお互いの「公開鍵（65 B）」を見せ合い、双方の計算で同じ共通鍵を導き出す</td>
+        </tr>
+        <tr>
+          <th>安全性の根拠（数学）</th>
+          <td id="tdKemPqc2" class="col-pqc highlight-pqc"><b>格子問題（Module-LWE）：</b>ノイズを加えた連立方程式から秘密を求める問題。現時点で、量子コンピュータを使っても効率的に解く方法は知られていない</td>
+          <td id="tdKemClassic2" class="col-classic"><b>楕円曲線上の離散対数問題：</b>従来のコンピュータでは現実的な時間で解けないが、大規模な量子コンピュータが実現すれば「ショアのアルゴリズム」で効率的に解けるとされる</td>
+        </tr>
+        <tr>
+          <th>実際のTLSでの使われ方</th>
+          <td class="col-pqc">TLS 1.3では、従来方式（X25519）とML-KEM-768を組み合わせた<b>ハイブリッド鍵交換（X25519MLKEM768）</b>の導入が主要ブラウザやCDNで進んでいる。どちらか一方が破られても安全性を保てるようにするため</td>
+          <td class="col-classic">現在もECDHE（X25519やP-256）による鍵交換が広く使われている</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- サイズ視覚比較パネル -->
+    <div class="compare-panel">
+      <div class="bar-group">
+        <div class="bar-label"><span>サーバー公開鍵サイズの比較</span><span style="color:var(--pqc);">PQCは約18.2倍</span></div>
+        <div class="bar-label" style="font-weight:400; font-size:0.75rem;"><span>従来 TLS (ECDH P-256): 65 bytes</span><span>PQC (ML-KEM-768): 1,184 bytes</span></div>
+        <div class="bar-track"><div class="bar-fill-classic" style="width: 5.5%;"></div></div>
+        <div class="bar-track"><div class="bar-fill-pqc" style="width: 100%;"></div></div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label"><span>ブラウザから送る鍵交換データの比較</span><span style="color:var(--pqc);">PQCは約16.7倍</span></div>
+        <div class="bar-label" style="font-weight:400; font-size:0.75rem;"><span>従来 TLS (送信側公開鍵): 65 bytes</span><span>PQC (カプセル暗号文): 1,088 bytes</span></div>
+        <div class="bar-track"><div class="bar-fill-classic" style="width: 6%;"></div></div>
+        <div class="bar-track"><div class="bar-fill-pqc" style="width: 100%;"></div></div>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <!-- 送信者側（ブラウザ） -->
+      <div class="role-box role-client">
+        <div class="role-header">
+          <span>🖥️ 送信者側（ブラウザ / JS）</span>
+          <span class="key-tag" id="kemClientTag">サーバー公開鍵(1,184 B)を使用</span>
+        </div>
+        <label>① 送信したい平文メッセージ：</label>
+        <input type="text" id="kemPlain" value="サーバーへ送る機密データ">
+        <button id="btnKemStep1" class="action-btn btn-client">
+          Step 1: 鍵共有＆AES暗号化して送信
+        </button>
+        <label>ブラウザ内部の処理ログ：</label>
+        <pre id="clientKemLog">モードを選ぶか「Step 1」を押してください。</pre>
+      </div>
+
+      <!-- ネットワーク経路 -->
+      <div class="role-box role-net">
+        <div class="role-header">
+          <span>🌐 ネットワーク（HTTPS POST）</span>
+          <span class="key-tag" id="kemNetTag">JSONペイロードサイズ比較</span>
+        </div>
+        <label>② 実際にネットワークを流れるJSON（Base64）：</label>
+        <textarea id="netKemPayload" rows="4" readonly placeholder="従来のTLSとPQCで、ここの文字数（通信量）が劇的に変わります"></textarea>
+        <label>通信パケットサイズの内訳（PQC vs 従来TLS）：</label>
+        <pre id="netKemLog">待機中...</pre>
+      </div>
+
+      <!-- 受信者側（サーバー） -->
+      <div class="role-box role-server">
+        <div class="role-header">
+          <span>🗄️ 受信者側（サーバー側）</span>
+          <span class="key-tag">秘密鍵を厳重保管</span>
+        </div>
+        <label>③ 共通鍵の導出＆AES復号：</label>
+        <button id="btnKemStep2" class="action-btn btn-server" disabled>
+          Step 2: サーバーの秘密鍵で共通鍵を復元して復号
+        </button>
+        <label>サーバー内部の処理ログ：</label>
+        <pre id="serverKemLog">Step 1 完了後に実行できます。</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== セクション2: 電子署名 ==================== -->
+  <div class="section-card">
+    <div class="section-header">
+      <h2 class="section-title">
+        <span class="badge" id="dsaBadge">PQC: ML-DSA-65</span>
+        2. デジタル署名による本人証明・改ざん検知
+      </h2>
+      <div class="mode-switch">
+        <button id="modeDsaPqc" class="mode-btn active-pqc">🟣 PQC（ML-DSA-65）</button>
+        <button id="modeDsaClassic" class="mode-btn">⚪ 従来TLS（ECDSA P-256）</button>
+      </div>
+    </div>
+
+    <!-- 仕組みの違い比較表 -->
+    <table class="diff-table">
+      <thead>
+        <tr>
+          <th>比較ポイント</th>
+          <th id="thDsaPqc" class="col-pqc highlight-pqc">🟣 PQC：ML-DSA-65（NIST標準 FIPS 204）</th>
+          <th id="thDsaClassic" class="col-classic">⚪ 従来TLS：ECDSA P-256（現在の主流）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>データサイズとDB・通信への影響</th>
+          <td id="tdDsaPqc1" class="col-pqc highlight-pqc"><b>署名が約52倍（3,309 B）：</b>1回の署名で約3.3KBになるため、DBのカラム長やHTTPヘッダ・トークンのサイズ上限の見直しが必要になる場合がある</td>
+          <td id="tdDsaClassic1" class="col-classic"><b>コンパクト（64 B）：</b>署名は64バイト（r, s の生の値。証明書などで使うDER形式では約70〜72バイト）で、証明書やJWTに入れても通信量への影響は小さい</td>
+        </tr>
+        <tr>
+          <th>量子コンピュータ登場後のリスク</th>
+          <td id="tdDsaPqc2" class="col-pqc highlight-pqc"><b>量子耐性を想定した署名：</b>現時点で、公開鍵（1,952 B）から秘密鍵を求める効率的な量子アルゴリズムは知られておらず、証明書や電子契約など長期間の正当性が必要な署名への利用が想定されている</td>
+          <td id="tdDsaClassic2" class="col-classic"><b>なりすましリスク：</b>大規模な量子コンピュータが実現すると、公開鍵（65 B）から秘密鍵を求められ、第三者が偽の証明書や注文書に署名できるおそれがある</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- サイズ視覚比較パネル -->
+    <div class="compare-panel">
+      <div class="bar-group">
+        <div class="bar-label"><span>検証用の公開鍵サイズの比較</span><span style="color:var(--pqc);">PQCは約30.0倍</span></div>
+        <div class="bar-label" style="font-weight:400; font-size:0.75rem;"><span>従来 TLS (ECDSA P-256): 65 bytes</span><span>PQC (ML-DSA-65): 1,952 bytes</span></div>
+        <div class="bar-track"><div class="bar-fill-classic" style="width: 3.3%;"></div></div>
+        <div class="bar-track"><div class="bar-fill-pqc" style="width: 100%;"></div></div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label"><span>発行される電子署名サイズの比較</span><span style="color:var(--pqc);">PQCは約51.7倍</span></div>
+        <div class="bar-label" style="font-weight:400; font-size:0.75rem;"><span>従来 TLS (ECDSA署名): 64 bytes</span><span>PQC (ML-DSA-65署名): 3,309 bytes</span></div>
+        <div class="bar-track"><div class="bar-fill-classic" style="width: 2%;"></div></div>
+        <div class="bar-track"><div class="bar-fill-pqc" style="width: 100%;"></div></div>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <!-- 送信者側（署名作成） -->
+      <div class="role-box role-client">
+        <div class="role-header">
+          <span>🖥️ 送信者側（ブラウザ / 署名者）</span>
+          <span class="key-tag">署名用の秘密鍵を保持</span>
+        </div>
+        <label>① 署名して送る注文データ：</label>
+        <input type="text" id="dsaPlain" value="発注ID:2026-001 / 金額:1,000,000円">
+        <button id="btnDsaStep1" class="action-btn btn-client">
+          Step 1: 電子署名を作成して送信
+        </button>
+        <label>ブラウザ内部の処理ログ：</label>
+        <pre id="clientDsaLog">モードを選ぶか「Step 1」を押してください。</pre>
+      </div>
+
+      <!-- ネットワーク経路 -->
+      <div class="role-box role-net">
+        <div class="role-header">
+          <span>🌐 ネットワーク（転送中データ）</span>
+          <span class="key-tag">書き換えて改ざん実験可能</span>
+        </div>
+        <label>② 送信中のメッセージ本文（手動で書き換え可能）：</label>
+        <input type="text" id="netDsaMessage" placeholder="Step 1でセットされます（ここを書き換えると改ざんになります）">
+        <label>付与された電子署名データ：</label>
+        <pre id="netDsaSigLog">待機中...</pre>
+      </div>
+
+      <!-- 受信者側（検証） -->
+      <div class="role-box role-server">
+        <div class="role-header">
+          <span>🗄️ 受信者側（サーバー / 検証者）</span>
+          <span class="key-tag">公開鍵で検証</span>
+        </div>
+        <label>③ 届いたメッセージと署名の整合性チェック：</label>
+        <button id="btnDsaStep2" class="action-btn btn-server" disabled>
+          Step 2: 公開鍵で署名を検証する
+        </button>
+        <label>サーバー内部の検証結果：</label>
+        <pre id="serverDsaLog">Step 1 完了後に実行できます。</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-card refs">
+    <h2>参考情報</h2>
+    <ul>
+      <li>NIST FIPS 203（ML-KEM）、FIPS 204（ML-DSA）：2024年8月に標準として公表</li>
+      <li>金融庁「預金取扱金融機関の耐量子計算機暗号への対応に関する検討会報告書」（2024年11月）</li>
+      <li>暗号処理ライブラリ：@noble/post-quantum（ML-KEM / ML-DSA）、Web Crypto API（ECDH / ECDSA / AES-GCM）</li>
+    </ul>
+  </div>
+
+  <script type="module">
+    import { ml_kem768 } from 'https://esm.sh/@noble/post-quantum@0.2.1/ml-kem';
+    import { ml_dsa65 } from 'https://esm.sh/@noble/post-quantum@0.2.1/ml-dsa';
+
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    const toHex = (u8) => Array.from(u8).map(b => b.toString(16).padStart(2, '0')).join('');
+    const toBase64 = (u8) => {
+      let bin = '';
+      for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+      return btoa(bin);
+    };
+    const fromBase64 = (b64) => {
+      const bin = atob(b64);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return u8;
+    };
+
+    // =========================================================================
+    // 状態管理
+    // =========================================================================
+    let kemMode = 'pqc';
+    let dsaMode = 'pqc';
+    let serverKemState = null;
+    let dsaState = null;
+
+    // 比較表のハイライト切り替えヘルパー
+    function updateKemHighlight(isPqc) {
+      const pqcEls = ['thKemPqc', 'tdKemPqc1', 'tdKemPqc2'].map(id => document.getElementById(id));
+      const clsEls = ['thKemClassic', 'tdKemClassic1', 'tdKemClassic2'].map(id => document.getElementById(id));
+      pqcEls.forEach(el => el.className = isPqc ? 'col-pqc highlight-pqc' : 'col-pqc');
+      clsEls.forEach(el => el.className = !isPqc ? 'col-classic highlight-classic' : 'col-classic');
+    }
+
+    function updateDsaHighlight(isPqc) {
+      const pqcEls = ['thDsaPqc', 'tdDsaPqc1', 'tdDsaPqc2'].map(id => document.getElementById(id));
+      const clsEls = ['thDsaClassic', 'tdDsaClassic1', 'tdDsaClassic2'].map(id => document.getElementById(id));
+      pqcEls.forEach(el => el.className = isPqc ? 'col-pqc highlight-pqc' : 'col-pqc');
+      clsEls.forEach(el => el.className = !isPqc ? 'col-classic highlight-classic' : 'col-classic');
+    }
+
+    // =========================================================================
+    // 1. 鍵共有（ML-KEM-768 vs ECDH P-256）の実行関数
+    // =========================================================================
+    async function runKemStep1() {
+      const t0 = performance.now();
+      const plainText = document.getElementById('kemPlain').value;
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+
+      if (kemMode === 'pqc') {
+        const serverKeys = ml_kem768.keygen();
+        const { cipherText, sharedSecret: clientSecret } = ml_kem768.encapsulate(serverKeys.publicKey);
+
+        const aesKey = await crypto.subtle.importKey('raw', clientSecret, 'AES-GCM', false, ['encrypt']);
+        const encryptedBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, enc.encode(plainText));
+        const encryptedBytes = new Uint8Array(encryptedBuf);
+        const t1 = performance.now();
+
+        serverKemState = { mode: 'pqc', secretKey: serverKeys.secretKey };
+
+        const payloadJson = JSON.stringify({
+          algorithm: 'ML-KEM-768 (PQC)',
+          keyExchangeData: toBase64(cipherText),
+          iv: toBase64(iv),
+          encryptedData: toBase64(encryptedBytes)
+        }, null, 2);
+
+        document.getElementById('netKemPayload').value = payloadJson;
+        document.getElementById('clientKemLog').textContent = [
+          `🟣【PQC: ML-KEM-768】処理時間: ${(t1 - t0).toFixed(2)} ms`,
+          `・サーバー公開鍵: ${serverKeys.publicKey.length} bytes (従来ECDHの約18倍)`,
+          `・送信カプセル: ${cipherText.length} bytes (従来ECDHの約17倍)`,
+          `・導出した共通AES鍵(32B): ${toHex(clientSecret)}`,
+          `・特徴: 公開鍵で共通鍵のタネをカプセル化して送る（量子コンピュータへの耐性を想定した方式）`
+        ].join('\n');
+
+        document.getElementById('netKemLog').textContent = [
+          `■ JSONペイロード総文字数: ${payloadJson.length} 文字`,
+          `・鍵交換データ(カプセル): 1,088 bytes (従来は 65 bytes)`,
+          `・IV + AES暗号文: ${iv.length + encryptedBytes.length} bytes`,
+          `-----------------------------------------`,
+          `👉 右の「Step 2」ボタンを押すと、サーバー側でカプセルを開封して復号します。`
+        ].join('\n');
+
+      } else {
+        const serverKeyPair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+        const clientKeyPair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+
+        const serverPubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', serverKeyPair.publicKey));
+        const clientPubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', clientKeyPair.publicKey));
+
+        const sharedBits = await crypto.subtle.deriveBits({ name: 'ECDH', public: serverKeyPair.publicKey }, clientKeyPair.privateKey, 256);
+        const clientSecret = new Uint8Array(sharedBits);
+
+        const aesKey = await crypto.subtle.importKey('raw', clientSecret, 'AES-GCM', false, ['encrypt']);
+        const encryptedBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, enc.encode(plainText));
+        const encryptedBytes = new Uint8Array(encryptedBuf);
+        const t1 = performance.now();
+
+        serverKemState = { mode: 'classic', serverPrivateKey: serverKeyPair.privateKey };
+
+        const payloadJson = JSON.stringify({
+          algorithm: 'ECDH-P256 (Classic TLS)',
+          keyExchangeData: toBase64(clientPubRaw),
+          iv: toBase64(iv),
+          encryptedData: toBase64(encryptedBytes)
+        }, null, 2);
+
+        document.getElementById('netKemPayload').value = payloadJson;
+        document.getElementById('clientKemLog').textContent = [
+          `⚪【従来TLS: ECDH P-256】処理時間: ${(t1 - t0).toFixed(2)} ms`,
+          `・サーバー公開鍵: ${serverPubRaw.length} bytes (PQCは 1,184 bytes)`,
+          `・送信クライアント公開鍵: ${clientPubRaw.length} bytes (PQCは 1,088 bytes)`,
+          `・導出した共通AES鍵(32B): ${toHex(clientSecret)}`,
+          `・特徴: 非常に軽量だが、大規模な量子コンピュータが実現すると秘密鍵を求められるおそれがある`
+        ].join('\n');
+
+        document.getElementById('netKemLog').textContent = [
+          `■ JSONペイロード総文字数: ${payloadJson.length} 文字（PQCより大幅に小さい）`,
+          `・鍵交換データ(ECDH公開鍵): 65 bytes (PQCは 1,088 bytes)`,
+          `・IV + AES暗号文: ${iv.length + encryptedBytes.length} bytes`,
+          `-----------------------------------------`,
+          `👉 右の「Step 2」ボタンを押すと、サーバー側でECDH計算を行って復号します。`
+        ].join('\n');
+      }
+
+      document.getElementById('serverKemLog').textContent = `【${kemMode === 'pqc' ? 'PQC (ML-KEM-768)' : '従来TLS (ECDH)'}】のパケットが到着しました。\n上の「Step 2」ボタンを押すとすぐに復号できます。`;
+      document.getElementById('btnKemStep2').disabled = false;
+    }
+
+    // Step 2: サーバー側復号
+    document.getElementById('btnKemStep2').addEventListener('click', async () => {
+      try {
+        const t0 = performance.now();
+        const payload = JSON.parse(document.getElementById('netKemPayload').value);
+        const kexBytes = fromBase64(payload.keyExchangeData);
+        const iv = fromBase64(payload.iv);
+        const encryptedBytes = fromBase64(payload.encryptedData);
+
+        let serverSecret;
+        if (serverKemState.mode === 'pqc') {
+          serverSecret = ml_kem768.decapsulate(kexBytes, serverKemState.secretKey);
+        } else {
+          const clientPubKey = await crypto.subtle.importKey('raw', kexBytes, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+          const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: clientPubKey }, serverKemState.serverPrivateKey, 256);
+          serverSecret = new Uint8Array(bits);
+        }
+
+        const aesKey = await crypto.subtle.importKey('raw', serverSecret, 'AES-GCM', false, ['decrypt']);
+        const decryptedBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, encryptedBytes);
+        const t1 = performance.now();
+
+        document.getElementById('serverKemLog').textContent = [
+          `✅ [復号成功: ${payload.algorithm}] (${(t1 - t0).toFixed(2)} ms)`,
+          `1. 導出方法: ${serverKemState.mode === 'pqc' ? '秘密鍵(2,400B)でカプセル(1,088B)を開封' : 'サーバー秘密鍵とクライアント公開鍵(65B)をECDH掛け算'}`,
+          `2. 復元された共通AES鍵(32B):`,
+          `   ${toHex(serverSecret)}`,
+          `3. 復号された平文メッセージ:`,
+          `   「${dec.decode(decryptedBuf)}」`
+        ].join('\n');
+      } catch (e) {
+        document.getElementById('serverKemLog').textContent = `復号エラー: ${e.message}`;
+      }
+    });
+
+    // =========================================================================
+    // 2. 電子署名（ML-DSA-65 vs ECDSA P-256）の実行関数
+    // =========================================================================
+    async function runDsaStep1() {
+      const t0 = performance.now();
+      const text = document.getElementById('dsaPlain').value;
+      const msgBytes = enc.encode(text);
+
+      if (dsaMode === 'pqc') {
+        const keys = ml_dsa65.keygen();
+        const sig = ml_dsa65.sign(keys.secretKey, msgBytes);
+        const t1 = performance.now();
+
+        dsaState = { mode: 'pqc', publicKey: keys.publicKey, signature: sig, pubLen: keys.publicKey.length };
+
+        document.getElementById('clientDsaLog').textContent = [
+          `🟣【PQC: ML-DSA-65】処理時間: ${(t1 - t0).toFixed(2)} ms`,
+          `・秘密鍵サイズ: ${keys.secretKey.length} bytes`,
+          `・公開鍵サイズ: ${keys.publicKey.length} bytes (従来ECDSAの30倍)`,
+          `・署名データサイズ: ${sig.length} bytes (従来ECDSAの約52倍)`
+        ].join('\n');
+
+        document.getElementById('netDsaSigLog').textContent = [
+          `[ML-DSA-65 署名データ: 3,309 bytes (従来の約52倍)]`,
+          `${toHex(sig.slice(0, 96))}... (長すぎるため省略)`
+        ].join('\n');
+
+      } else {
+        const keyPair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+        const pubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', keyPair.publicKey));
+        const sigBuf = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, keyPair.privateKey, msgBytes);
+        const sig = new Uint8Array(sigBuf);
+        const t1 = performance.now();
+
+        dsaState = { mode: 'classic', publicKey: keyPair.publicKey, signature: sig, pubLen: pubRaw.length };
+
+        document.getElementById('clientDsaLog').textContent = [
+          `⚪【従来TLS: ECDSA P-256】処理時間: ${(t1 - t0).toFixed(2)} ms`,
+          `・公開鍵サイズ: ${pubRaw.length} bytes (PQCは 1,952 bytes)`,
+          `・署名データサイズ: ${sig.length} bytes (PQCは 3,309 bytes)`,
+          `・特徴: 64バイトと軽量だが、大規模な量子コンピュータが実現すると偽造されるおそれがある`
+        ].join('\n');
+
+        document.getElementById('netDsaSigLog').textContent = [
+          `[ECDSA P-256 署名データ: 全 64 bytes (全文表示)]`,
+          `${toHex(sig)}`
+        ].join('\n');
+      }
+
+      document.getElementById('netDsaMessage').value = text;
+      document.getElementById('serverDsaLog').textContent = `【${dsaMode === 'pqc' ? 'PQC (ML-DSA-65)' : '従来TLS (ECDSA)'}】の署名データが到着しました。\n上の「Step 2」ボタンを押すと検証できます（中央の文字を変えると改ざん検知します）。`;
+      document.getElementById('btnDsaStep2').disabled = false;
+    }
+
+    // Step 2: 署名検証
+    document.getElementById('btnDsaStep2').addEventListener('click', async () => {
+      const t0 = performance.now();
+      const receivedText = document.getElementById('netDsaMessage').value;
+      const receivedBytes = enc.encode(receivedText);
+
+      let isValid = false;
+      if (dsaState.mode === 'pqc') {
+        isValid = ml_dsa65.verify(dsaState.publicKey, receivedBytes, dsaState.signature);
+      } else {
+        isValid = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, dsaState.publicKey, dsaState.signature, receivedBytes);
+      }
+      const t1 = performance.now();
+
+      const algoName = dsaState.mode === 'pqc' ? '🟣 PQC (ML-DSA-65)' : '⚪ 従来TLS (ECDSA P-256)';
+      if (isValid) {
+        document.getElementById('serverDsaLog').textContent = [
+          `✅ [${algoName} 検証結果: TRUE（正常）] (${(t1 - t0).toFixed(2)} ms)`,
+          `・公開鍵 (${dsaState.pubLen} B) と署名 (${dsaState.signature.length} B) で検証成功。`,
+          `・受信データ「${receivedText}」に改ざんはありません。`
+        ].join('\n');
+      } else {
+        document.getElementById('serverDsaLog').textContent = [
+          `🚨 [${algoName} 検証結果: FALSE（改ざん検知！）] (${(t1 - t0).toFixed(2)} ms)`,
+          `・受信データ「${receivedText}」は署名作成時から書き換えられています！`
+        ].join('\n');
+      }
+    });
+
+    // =========================================================================
+    // イベント登録（モード切替時に自動でStep 1を実行してStep 2を即押せるようにする）
+    // =========================================================================
+    document.getElementById('btnKemStep1').addEventListener('click', runKemStep1);
+    document.getElementById('btnDsaStep1').addEventListener('click', runDsaStep1);
+
+    document.getElementById('modeKemPqc').addEventListener('click', () => {
+      kemMode = 'pqc';
+      document.getElementById('modeKemPqc').className = 'mode-btn active-pqc';
+      document.getElementById('modeKemClassic').className = 'mode-btn';
+      document.getElementById('kemBadge').textContent = 'PQC: ML-KEM-768';
+      document.getElementById('kemClientTag').textContent = 'サーバー公開鍵(1,184 B)を使用';
+      updateKemHighlight(true);
+      runKemStep1();
+    });
+
+    document.getElementById('modeKemClassic').addEventListener('click', () => {
+      kemMode = 'classic';
+      document.getElementById('modeKemClassic').className = 'mode-btn active-classic';
+      document.getElementById('modeKemPqc').className = 'mode-btn';
+      document.getElementById('kemBadge').textContent = '従来TLS: ECDH P-256';
+      document.getElementById('kemClientTag').textContent = 'サーバー公開鍵(65 B)を使用';
+      updateKemHighlight(false);
+      runKemStep1();
+    });
+
+    document.getElementById('modeDsaPqc').addEventListener('click', () => {
+      dsaMode = 'pqc';
+      document.getElementById('modeDsaPqc').className = 'mode-btn active-pqc';
+      document.getElementById('modeDsaClassic').className = 'mode-btn';
+      document.getElementById('dsaBadge').textContent = 'PQC: ML-DSA-65';
+      updateDsaHighlight(true);
+      runDsaStep1();
+    });
+
+    document.getElementById('modeDsaClassic').addEventListener('click', () => {
+      dsaMode = 'classic';
+      document.getElementById('modeDsaClassic').className = 'mode-btn active-classic';
+      document.getElementById('modeDsaPqc').className = 'mode-btn';
+      document.getElementById('dsaBadge').textContent = '従来TLS: ECDSA P-256';
+      updateDsaHighlight(false);
+      runDsaStep1();
+    });
+
+    // ページ読み込み時に初期状態（PQC）でStep 1を自動実行しておく
+    runKemStep1();
+    runDsaStep1();
+  </script>
+</body>
+</html>
